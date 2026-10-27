@@ -1,3 +1,24 @@
-*.pdf
-The_Data_Sources.md
+# Secrets
 .env
+
+# Python
+__pycache__/
+.venv/
+venv/
+
+# Spark
+spark/spark-warehouse/
+spark/metastore_db/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+#enviroment 
+AIS/
