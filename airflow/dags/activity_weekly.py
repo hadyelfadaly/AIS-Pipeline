@@ -5,13 +5,13 @@ import time
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
-import requests
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
 
 from common.preflight import preflight
 from common.verify import verify_outputs
+from common.portwatch_api import query
 
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
@@ -32,51 +32,6 @@ OVERLAP_DAYS = 14            #estimates can be revised, so re-fetch recent days
 PAGE_SIZE = 1000             #the service's maxRecordCount
 ORDER_BY = "ObjectId"   #must be unique per row, or paging can skip rows
 DROP_COLUMNS = {"fid", "esri_oid"}   #ArcGIS bookkeeping columns
-
-if not BUCKET_NAME:
-    raise RuntimeError("BUCKET_NAME is not set")
-
-def query(params, service_url, attempts=5):
-    
-    last = None
-
-    for attempt in range(attempts):
-
-        try:
-
-            r = requests.get(
-                f"{service_url}/query",
-                params={**params, "f": "json"},
-                timeout=60,
-            )
-
-            r.raise_for_status()
-
-            body = r.json()
-
-            if "error" in body:
-
-                code = body["error"].get("code")
-
-                if code in (400, 403, 404):
-                    raise ValueError(f"ArcGIS rejected the query ({code}): {body['error']}")
-                
-                raise RuntimeError(f"ArcGIS error: {body['error']}")
-            
-            return body
-
-        except ValueError as exc:
-            raise exc
-        except Exception as exc:
-
-            last = exc
-            wait = 2 ** attempt
-
-            print(f"[query] attempt {attempt + 1} failed: {exc}; retrying in {wait}s", flush=True)
-
-            time.sleep(wait)
-
-    raise last
 
 
 def where_from(d):
@@ -139,6 +94,7 @@ def read_watermark(hook, state_key, snapshot_prefix, snapshot_marker_key):
     start_date=datetime(2026, 10, 1),
     catchup=False,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
+    tags=["activity", "ports", "chokepoints"]
 )
 def activity_weekly_dag():
 
