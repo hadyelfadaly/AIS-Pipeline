@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from common.preflight import preflight
 from common.verify import verify_outputs
+from common.portwatch_api import query
 
 from airflow.sdk import dag, task
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
@@ -20,25 +21,6 @@ PORTS_SERVICE_URL = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/s
 CHOKEPOINTS_SERVICE_URL = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_chokepoints_database/FeatureServer/0"
 AWS_CONN_ID = "aws_default"
 
-if not BUCKET_NAME:
-    raise RuntimeError("BUCKET_NAME is not set")
-
-def get_source_count(service_url):
-
-    r = requests.get(f"{service_url}/query", params={
-        "where": "1=1",
-        "returnCountOnly": "true",
-        "f": "json",
-    }, timeout=30)
-
-    r.raise_for_status()
-
-    body = r.json()
-
-    if "count" not in body:          
-        raise ValueError(f"Unexpected response: {body}")
-    
-    return body["count"]
 
 @dag(
     dag_id="ingest_reference_data",
@@ -46,6 +28,7 @@ def get_source_count(service_url):
     start_date=datetime(2026, 10, 1),
     catchup=False,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=5)},
+    tags=["reference_data", "ports", "chokepoints"],
 )
 def ingest_ports_ref_dag():
 
@@ -56,7 +39,7 @@ def ingest_ports_ref_dag():
 
         try:
 
-            expected_count = get_source_count(service_url) #get the expected row count from the source service
+            expected_count = query({"where": "1=1", "returnCountOnly": "true"}, service_url)["count"] #get the expected row count from the source service
             r = requests.get(url, timeout=120) #get the CSV data from the URL with a timeout of 120 seconds
 
             r.raise_for_status() #raise an HTTPError if the HTTP request returned an unsuccessful status code

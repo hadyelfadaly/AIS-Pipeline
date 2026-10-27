@@ -21,3 +21,16 @@ airflow = "airflow:main"
 [build-system]
 requires = ["uv_build>=0.12.24,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.3",
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-mock>=3.17.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "dags"]
+testpaths = ["tests"]
