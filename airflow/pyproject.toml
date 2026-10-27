@@ -1,0 +1,23 @@
+[project]
+name = "airflow"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "hadyelfadaly", email = "hadyelfadaly@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "apache-airflow-providers-amazon>=9.39.0",
+    "cryptography>=50.0.2",
+    "pandas>=3.1.0",
+    "pyarrow>=26.0.0",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+airflow = "airflow:main"
+
+[build-system]
+requires = ["uv_build>=0.12.24,<0.13.0"]
+build-backend = "uv_build"
