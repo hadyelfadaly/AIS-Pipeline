@@ -11,6 +11,7 @@ from datetime import timedelta
 from collections import Counter
 
 from common.preflight import preflight
+from common.portwatch_api import query
 
 from airflow.sdk import dag, task
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
@@ -23,29 +24,11 @@ PORTS_SERVICE_URL = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/s
 CHOKEPOINTS_SERVICE_URL = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0"
 AWS_CONN_ID = "aws_default"
 
-if not BUCKET_NAME:
-    raise RuntimeError("BUCKET_NAME is not set")
-
-def get_source_count(service_url, where_clause="1=1"):
-
-    r = requests.get(f"{service_url}/query", params={
-        "where": where_clause,
-        "returnCountOnly": "true",
-        "f": "json",
-    }, timeout=120)
-
-    r.raise_for_status()
-
-    body = r.json()
-
-    if "count" not in body:          
-        raise ValueError(f"Unexpected response: {body}")
-    
-    return body["count"]
 
 @dag(
     dag_id="activity_backfill",
     schedule=None,
+    tags=["activity", "ports", "chokepoints"]
 )
 def activity_backfill_dag():
 
@@ -99,12 +82,14 @@ def activity_backfill_dag():
 
                     print(f"part {i}: {total:,} rows so far")
 
-            expected_count = get_source_count(service_url) #get the expected row count from the source service
-            upto_count = get_source_count(service_url, where_clause=(
+            where = (
                 f"(year < {max_date.year}) OR "
                 f"(year = {max_date.year} AND month < {max_date.month}) OR "
                 f"(year = {max_date.year} AND month = {max_date.month} AND day <= {max_date.day})"
-            ))
+            )
+
+            expected_count = query({"where": "1=1", "returnCountOnly": "true"}, service_url)["count"] #get the expected row count from the source service
+            upto_count = query({"where": where, "returnCountOnly": "true"}, service_url)["count"]
 
             print(f"snapshot rows={total:,}, max_date={max_date.date()}", flush=True)
             print(f"service rows up to that date={upto_count:,}; newer than snapshot={expected_count - upto_count:,}", flush=True)
