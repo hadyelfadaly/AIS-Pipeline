@@ -22,3 +22,5 @@ Thumbs.db
 
 #enviroment 
 AIS/
+# local spark scratch output
+data/
