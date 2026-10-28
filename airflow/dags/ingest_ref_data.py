@@ -13,6 +13,7 @@ from common.portwatch_api import query
 
 from airflow.sdk import dag, task
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 PORTS_URL = "https://hub.arcgis.com/api/v3/datasets/acc668d199d1472abaaf2467133d4ca4_0/downloads/data?format=csv&spatialRefId=3857&where=1%3D1"
@@ -71,14 +72,21 @@ def ingest_ports_ref_dag():
             print(f"Other error occurred: {err}")
             raise
 
+    silver_ports_ref = GlueJobOperator(
+        task_id="silver_ports_ref",
+        job_name="ports_ref_silver", 
+        wait_for_completion=True,
+        region_name="eu-north-1",
+        verbose=False,
+        retries=1,
+    )
     gate = preflight(["BUCKET_NAME", "AIRFLOW_CONN_AWS_DEFAULT"], [PORTS_SERVICE_URL, CHOKEPOINTS_SERVICE_URL])
     ports = ingest.override(task_id="ingest_ports")(url=PORTS_URL, ref_name="ports_reference", file_name="ports", service_url=PORTS_SERVICE_URL) #call the ingest task for ports reference data
     chokepoints = ingest.override(task_id="ingest_chokepoints")(url=CHOKEPOINTS_URL, ref_name="chokepoints_reference", file_name="chokepoints", service_url=CHOKEPOINTS_SERVICE_URL) #call the ingest task for chokepoints reference data
 
-    gate >> [ports, chokepoints] #set the dependencies so that the preflight checks must pass before the ingest tasks run
-    [ports, chokepoints] >> verify_outputs([
+    gate >> [ports, chokepoints] >> verify_outputs([
     "bronze/ports_reference/ports.parquet",
     "bronze/chokepoints_reference/chokepoints.parquet",
-    ])
+    ]) >> silver_ports_ref
 
 ingest_ports_ref_dag()
