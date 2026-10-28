@@ -2,3 +2,4 @@ kafka-python     #to send data to kafka
 requests         #for weather
 websockets       #for aisstream
 python-dotenv    #for environment variable management
+dbt
