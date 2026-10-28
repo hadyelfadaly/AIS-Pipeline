@@ -1,3 +1,10 @@
+"""SUPERSEDED by silver_stream.py.
+
+silver_stream.py now writes bronze and silver in one flow. This file is kept
+for reference only. Do not run it at the same time as silver_stream.py, or
+bronze/position_report will be written twice.
+"""
+
 import os
 
 from pyspark.sql.functions import col, current_timestamp
