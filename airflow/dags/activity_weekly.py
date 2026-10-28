@@ -6,13 +6,13 @@ from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
+from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
 
 from common.preflight import preflight
 from common.verify import verify_outputs
 from common.portwatch_api import query
-
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 AWS_CONN_ID = "aws_default"
@@ -123,15 +123,15 @@ def activity_weekly_dag():
             }, service_url)
 
             features = body.get("features", [])
-
             if not features:
                 break
 
             rows.extend(f["attributes"] for f in features)
-
             last_id = features[-1]["attributes"]["ObjectId"]
-
             print(f"{len(rows):,} / {expected_count:,}", flush=True)
+
+            if len(rows) >= expected_count:   # everything fetched: don't request an empty page
+                break
 
             time.sleep(0.2)
 
@@ -182,11 +182,20 @@ def activity_weekly_dag():
 
         print(f"wrote {len(written)} file(s): {written}; watermark is now {new_watermark}", flush=True)
 
+    silver_ports_activity = GlueJobOperator(
+        task_id="silver_ports_activity",
+        job_name="ports_silver_weekly",
+        script_args={"--lookback_days": "14"},
+        region_name="eu-north-1",
+        wait_for_completion=True,
+        verbose=False,
+        retries=1,
+    )
     gate = preflight(["BUCKET_NAME", "AIRFLOW_CONN_AWS_DEFAULT"], [PORTS_SERVICE_URL, CHOKEPOINTS_SERVICE_URL])
     pull = [pull_activity.override(task_id="pull_ports_activity")( service_url=PORTS_SERVICE_URL, state_key=PORTS_STATE_KEY, snapshot_prefix=PORTS_SNAPSHOT_PREFIX, snapshot_marker_key=PORTS_SNAPSHOT_MARKER_KEY),
             pull_activity.override(task_id="pull_chokepoints_activity")(service_url=CHOKEPOINTS_SERVICE_URL, state_key=CHOKEPOINTS_STATE_KEY, snapshot_prefix=CHOKEPOINTS_SNAPSHOT_PREFIX, snapshot_marker_key=CHOKEPOINTS_SNAPSHOT_MARKER_KEY)]
 
-    gate >> pull >> verify_outputs([PORTS_STATE_KEY, CHOKEPOINTS_STATE_KEY])
+    gate >> pull >> verify_outputs([PORTS_STATE_KEY, CHOKEPOINTS_STATE_KEY]) >> silver_ports_activity
 
 
 activity_weekly_dag()
