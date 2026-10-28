@@ -32,7 +32,7 @@ MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
 WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 
 GRID_SIZE = 0.1
-POLL_INTERVAL_SECONDS = 3600
+POLL_INTERVAL_SECONDS = int(os.getenv("WEATHER_POLL_INTERVAL_SECONDS", "3600"))
 REQUEST_TIMEOUT_SECONDS = 20
 ACTIVE_GRID_HOURS = 6
 
@@ -217,78 +217,42 @@ def fetch_and_join_weather(cell_id, cell_lat, cell_lon):
             f"No common eligible hour returned by APIs for grid {cell_id}"
         )
 
-    # Select the newest common hour, even when some values are null.
-    selected_hour = max(
-        eligible_hours,
-        key=parse_utc_hour,
-    )
-
-    marine_index = marine_times.index(selected_hour)
-    weather_index = weather_times.index(selected_hour)
-
     wave_values = marine_hourly.get("wave_height") or []
-    current_values = (
-        marine_hourly.get("ocean_current_velocity") or []
-    )
+    current_values = marine_hourly.get("ocean_current_velocity") or []
     wind_values = weather_hourly.get("wind_speed_10m") or []
 
-    # Missing array entries are treated as missing values.
-    wave_height = (
-        wave_values[marine_index]
-        if marine_index < len(wave_values)
-        else None
-    )
+    records = []
 
-    current_velocity = (
-        current_values[marine_index]
-        if marine_index < len(current_values)
-        else None
-    )
+    # Emit every eligible hour the API returned, not just the newest one.
+    # The API already sends 48 hours per call, so this costs no extra requests,
+    # and it lets positions from earlier hours match on (cell_id, hour).
+    for hour in sorted(eligible_hours, key=parse_utc_hour):
 
-    wind_speed = (
-        wind_values[weather_index]
-        if weather_index < len(wind_values)
-        else None
-    )
+        marine_index = marine_times.index(hour)
+        weather_index = weather_times.index(hour)
 
-    wave_height = to_float_or_none(wave_height)
-    current_velocity = to_float_or_none(current_velocity)
-    wind_speed = to_float_or_none(wind_speed)
-
-    missing_fields = []
-
-    if wave_height is None:
-        missing_fields.append("wave_height")
-
-    if current_velocity is None:
-        missing_fields.append("ocean_current_velocity")
-
-    if wind_speed is None:
-        missing_fields.append("wind_speed_10m")
-
-    if missing_fields:
-        logger.warning(
-            "Grid %s has missing fields at %s: %s",
-            cell_id,
-            selected_hour,
-            ", ".join(missing_fields),
+        wave_height = to_float_or_none(
+            wave_values[marine_index] if marine_index < len(wave_values) else None
+        )
+        current_velocity = to_float_or_none(
+            current_values[marine_index] if marine_index < len(current_values) else None
+        )
+        wind_speed = to_float_or_none(
+            wind_values[weather_index] if weather_index < len(wind_values) else None
         )
 
-    # Return the record even if one, two, or all values are null.
-    return {
-        "cell_id": cell_id,
-        "cell_lat": cell_lat,
-        "cell_lon": cell_lon,
-        "hour": selected_hour,
-        "wave_height_m": wave_height,
-        "current_velocity_kmh": current_velocity,
-        "wind_speed_kmh": wind_speed,
-        "polled_at": int(time.time()),
-    }
+        records.append({
+            "cell_id": cell_id,
+            "cell_lat": cell_lat,
+            "cell_lon": cell_lon,
+            "hour": hour,
+            "wave_height_m": wave_height,
+            "current_velocity_kmh": current_velocity,
+            "wind_speed_kmh": wind_speed,
+            "polled_at": int(time.time()),
+        })
 
-
-# --------------------------------------------------
-# Kafka setup
+    return records
 # --------------------------------------------------
 
 def create_kafka_clients():
@@ -403,28 +367,23 @@ def main():
 
                 for cell_id, grid in list(active_grids.items()):
                     try:
-                        weather_record = fetch_and_join_weather(
+                        weather_records = fetch_and_join_weather(
                             cell_id=cell_id,
                             cell_lat=grid["cell_lat"],
                             cell_lon=grid["cell_lon"],
                         )
 
-                        future = producer.send(
-                            WEATHER_TOPIC,
-                            key=cell_id,
-                            value=weather_record,
-                        )
-
-                        metadata = future.get(timeout=30)
+                        for weather_record in weather_records:
+                            producer.send(
+                                WEATHER_TOPIC,
+                                key=cell_id,
+                                value=weather_record,
+                            )
 
                         logger.info(
-                            "Sent weather record: cell=%s, hour=%s, "
-                            "topic=%s, partition=%s, offset=%s",
+                            "Sent %d weather hour(s) for cell=%s",
+                            len(weather_records),
                             cell_id,
-                            weather_record["hour"],
-                            metadata.topic,
-                            metadata.partition,
-                            metadata.offset,
                         )
 
                     except (

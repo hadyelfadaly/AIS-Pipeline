@@ -35,12 +35,12 @@ print(f"Kafka bootstrap servers: {KAFKA_BOOTSTRAP_SERVERS}")
 # True: send messages to Kafka
 SEND_TO_KAFKA = True
 
-# Global bounding box: [[south-west], [north-east]]
-BOUNDING_BOX = [[[-90, -180], [90, 180]]]
+# Bounding box: [[south-west], [north-east]]. Override with AIS_BOUNDING_BOX (JSON).
+_BOX_ENV = os.getenv("AIS_BOUNDING_BOX")
+BOUNDING_BOX = json.loads(_BOX_ENV) if _BOX_ENV else [[[-90, -180], [90, 180]]]
 
-# Stop after processing this many supported messages.
-# Set to None for continuous streaming.
-MAX_MESSAGES = 50
+# Stop after this many messages; 0 or unset = continuous. Override with AIS_MAX_MESSAGES.
+MAX_MESSAGES = int(os.getenv("AIS_MAX_MESSAGES", "50")) or None
 
 # Message types routed to Kafka topics
 POSITION_TYPES = {
