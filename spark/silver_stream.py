@@ -211,7 +211,7 @@ def position_batch(batch_df, batch_id):
         return
 
     raw = kafka_frame(batch_df)
-    raw.write.mode("append").json(bronze(TOPIC_POSITION))
+    raw.write.mode("append").json(bronze("position_report"))
 
     spark = batch_df.sparkSession
     positions = clean_positions(raw)
@@ -240,7 +240,7 @@ def static_batch(batch_df, batch_id):
         return
 
     raw = kafka_frame(batch_df)
-    raw.write.mode("append").json(bronze(TOPIC_STATIC))
+    raw.write.mode("append").json(bronze("ship_static"))
 
     (clean_static(raw)
      .withColumn("year", F.year("seen_at"))
@@ -258,7 +258,7 @@ def weather_batch(batch_df, batch_id):
         return
 
     raw = kafka_frame(batch_df)
-    raw.write.mode("append").json(bronze(TOPIC_WEATHER))
+    raw.write.mode("append").json(bronze("weather"))
 
     clean = clean_weather(raw)
     refresh_cache(clean)
