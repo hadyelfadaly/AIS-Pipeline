@@ -15,6 +15,11 @@ from common import (
     spark_session,
 )
 
+# AIS ship-type codes kept in silver: 70-79 cargo, 80-89 tanker.
+# Vessels whose type is unknown (no static message, or code 0) are excluded.
+ALLOWED_SHIP_TYPE_MIN = 70
+ALLOWED_SHIP_TYPE_MAX = 89
+
 BRONZE_SCHEMA = StructType([
     StructField("raw_json", StringType()),
     StructField("kafka_topic", StringType()),
@@ -246,6 +251,7 @@ def build_silver(spark, batch_df):
         .withColumn("year", F.year("event_time"))
         .withColumn("month", F.month("event_time"))
         .withColumn("day", F.dayofmonth("event_time"))
+        .filter(F.col("ship_type").between(ALLOWED_SHIP_TYPE_MIN, ALLOWED_SHIP_TYPE_MAX))
     )
 
 
