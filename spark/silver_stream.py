@@ -263,9 +263,7 @@ def weather_batch(batch_df, batch_id):
     clean = clean_weather(raw)
     refresh_cache(clean)
 
-    hour_ts = F.to_timestamp("hour", "yyyy-MM-dd'T'HH:mm")
-
-    print(f"[silver] weather batch {batch_id}", flush=True)
+    print(f"[silver] weather cache refreshed, batch {batch_id}", flush=True)
 
 
 def main():
@@ -298,7 +296,7 @@ def main():
 
     print(f"pipeline started: {len(queries)} queries", flush=True)
     print("  bronze: position_report, ship_static_data, weather", flush=True)
-    print("  silver: positions, vessels, weather", flush=True)
+    print("  silver: positions, vessels", flush=True)
     spark.streams.awaitAnyTermination()
 
 
