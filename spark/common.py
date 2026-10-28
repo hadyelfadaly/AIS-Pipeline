@@ -13,8 +13,8 @@ S3_ENDPOINT = os.getenv("S3_ENDPOINT", "")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
 
 TOPIC_POSITION = "position_report"
-TOPIC_STATIC = "ship_static_data"
-TOPIC_WEATHER = "weather_data"
+TOPIC_STATIC = "ship_static"
+TOPIC_WEATHER = "weather"
 
 GRID_SIZE = 0.1
 

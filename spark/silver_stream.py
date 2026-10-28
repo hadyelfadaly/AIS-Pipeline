@@ -264,13 +264,6 @@ def weather_batch(batch_df, batch_id):
     refresh_cache(clean)
 
     hour_ts = F.to_timestamp("hour", "yyyy-MM-dd'T'HH:mm")
-    (clean
-     .withColumn("year", F.year(hour_ts))
-     .withColumn("month", F.month(hour_ts))
-     .withColumn("day", F.dayofmonth(hour_ts))
-     .write.mode("append")
-     .partitionBy("year", "month", "day")
-     .parquet(silver("weather")))
 
     print(f"[silver] weather batch {batch_id}", flush=True)
 
