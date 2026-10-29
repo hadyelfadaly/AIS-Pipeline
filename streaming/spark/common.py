@@ -31,7 +31,7 @@ def silver(name):
     return s3(f"silver/{name}")
 
 
-def spark_session(app_name):
+def spark_session(app_name, extra_conf=None):
     builder = (
         SparkSession.builder
         .appName(app_name)
@@ -48,6 +48,9 @@ def spark_session(app_name):
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
     )
+
+    for key, value in (extra_conf or {}).items():
+        builder = builder.config(key, value)
 
     if S3_ENDPOINT:
         builder = (

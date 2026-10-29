@@ -1,0 +1,20 @@
+apiVersion: 1
+datasources:
+  - name: AIS Postgres
+    uid: ais-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: vessel_tracking
+    user: ais_user
+    isDefault: true
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
