@@ -19,6 +19,9 @@ models:
   ais:                       
     staging:
       +materialized: view
+    intermediate:
+      +materialized: table
+      +schema: staging
     marts:
       +materialized: table
       +schema: marts

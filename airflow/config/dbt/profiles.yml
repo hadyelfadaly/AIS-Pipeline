@@ -1,0 +1,17 @@
+# dbt profile used by the dbt_build task in Airflow (activity_weekly DAG).
+# Developers keep their own ~/.dbt/profiles.yml; this one is only passed with
+# --profiles-dir inside the Airflow containers. All secrets come from env vars
+# in airflow/.env, and the private key file is mounted at /opt/airflow/keys.
+ais:
+  target: prod
+  outputs:
+    prod:
+      type: snowflake
+      account: "{{ env_var('DBT_SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('DBT_SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('DBT_SNOWFLAKE_PRIVATE_KEY_PATH', '/opt/airflow/keys/rsa_key.p8') }}"
+      role: "{{ env_var('DBT_SNOWFLAKE_ROLE', 'DBT_ROLE') }}"
+      warehouse: "{{ env_var('DBT_SNOWFLAKE_WAREHOUSE', 'AIS_WH') }}"
+      database: AIS
+      schema: STAGING
+      threads: 4

@@ -296,17 +296,17 @@ def main():
     queries = [
         stream(TOPIC_WEATHER, "latest").writeStream
         .option("checkpointLocation", silver("_cp/weather"))
-        .trigger(processingTime="10 seconds")
+        .trigger(processingTime="30 seconds")
         .foreachBatch(weather_batch).start(),
 
         stream(TOPIC_STATIC, "latest").writeStream
         .option("checkpointLocation", silver("_cp/vessels"))
-        .trigger(processingTime="10 seconds")
+        .trigger(processingTime="60 seconds")
         .foreachBatch(static_batch).start(),
 
         stream(TOPIC_POSITION, "latest").writeStream
         .option("checkpointLocation", silver("_cp/positions"))
-        .trigger(processingTime="10 seconds")
+        .trigger(processingTime="30 seconds")
         .foreachBatch(position_batch).start(),
     ]
 

@@ -12,7 +12,7 @@ TOPIC_POSITION = "position_report"
 TOPIC_STATIC = "ship_static_data"
 TOPIC_WEATHER = "weather_data"
 
-GRID_SIZE = 0.1
+GRID_SIZE = float(os.getenv("WEATHER_GRID_SIZE", "1.0"))
 
 
 def s3(path):
