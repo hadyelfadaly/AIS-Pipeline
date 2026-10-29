@@ -1,4 +1,4 @@
-# AIS & PortWatch Data Engineering Pipeline
+# AIS & Port Data Pipeline
 
 ![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 ![Airflow](https://img.shields.io/badge/Airflow-017CEE?style=flat-square&logo=apacheairflow&logoColor=white)
@@ -9,6 +9,7 @@
 ![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square&logo=dbt&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white)
+![Power BI](https://img.shields.io/badge/Power%20BI-F2C811?style=flat-square&logo=powerbi&logoColor=black)
 
 ## Motivation & Project Overview
 
@@ -76,6 +77,16 @@ AISStream + Open-Meteo
 Snowflake also reads the AIS Delta tables in S3 through external tables.
 ```
 
+![AIS and port data pipeline architecture](imgs/Architecture.png)
+
+*Architecture diagram: live streaming and weekly batch paths, shared S3 lake,
+warehouse transformations, and BI serving.*
+
+The AWS Glue Data Catalog tracks the batch bronze and silver datasets alongside
+the streaming tables:
+
+![AWS Glue Data Catalog tables](imgs/Glue%20Data%20Catalog.png)
+
 ## Batch Ingestion & Orchestration (Airflow)
 
 Airflow runs locally in Docker Compose using a CeleryExecutor, PostgreSQL
@@ -110,6 +121,11 @@ weekly activity flow. Chokepoints are ingested into S3, while the current
 Snowflake/dbt analytical models primarily use ports activity and AIS data.
 See [airflow/README.md](./airflow/README.md) for setup and DAG details.
 
+The Airflow graph below shows the weekly ingestion, loading, validation, and
+Delta maintenance dependencies:
+
+![Airflow weekly DAG lineage](imgs/Airflow%20Dag%20Lineage.png)
+
 ## Streaming Ingestion & Live Serving
 
 The stack in [streaming/](./streaming/) is started independently with Docker
@@ -133,6 +149,11 @@ S3 bronze records and the `silver_rebuild.py` utility provide recovery and
 reprocessing options, subject to the records already written to S3. Open
 `http://localhost:3001` for Grafana, `http://localhost:18080` for the Spark
 master UI, and `http://localhost:9092` for the local Kafka broker.
+
+The provisioned Grafana dashboard presents the live cargo and tanker fleet,
+recent position volume, and vessel status:
+
+![Grafana live AIS monitoring dashboard](imgs/Grafana%20Monitor.png)
 
 ## Data Warehouse Design (Snowflake + dbt)
 
@@ -166,11 +187,28 @@ reliably matched remain unknown rather than being presented as verified facts.
 Read [dbt/ais/README.md](./dbt/ais/README.md) for project configuration and
 commands.
 
+### Analytics Model
+
+The diagram below shows the dbt mart entities and their relationships.
+
+![dbt analytics mart schema](imgs/Model.png)
+
+The dbt lineage view shows the source-to-model and test dependencies:
+
+![dbt model and test lineage](imgs/dbt%20Lineage.png)
+
+The Power BI report summarizes fleet delay, ETA risk, port congestion, and
+weather impact. The report file is available at
+[imgs/gpbigdata.pbix](imgs/gpbigdata.pbix).
+
+![Power BI maritime analytics dashboard](imgs/Power%20BI%20Dashboard.png)
+
 ## Repository Structure
 
 ```text
 AIS-Pipeline/
 ├── .github/workflows/       # Airflow CI workflow
+├── imgs/                    # Architecture, lineage, monitoring, and BI visuals
 ├── airflow/
 │   ├── dags/                # Batch DAGs and shared checks
 │   ├── config/dbt/          # Airflow's dbt profile
