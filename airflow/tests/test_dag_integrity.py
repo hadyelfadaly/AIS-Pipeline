@@ -1,6 +1,7 @@
 import pytest
 from airflow.models import DagBag
 
+
 @pytest.fixture(scope="session")
 def dagbag():
     return DagBag(dag_folder="dags/") #Loads all DAGs from the 'dags/' directory

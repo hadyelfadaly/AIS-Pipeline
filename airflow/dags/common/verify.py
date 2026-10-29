@@ -1,7 +1,7 @@
 import os
 
-from airflow.sdk import task, get_current_context
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.sdk import get_current_context, task
 
 
 @task(trigger_rule="all_done", retries=0)

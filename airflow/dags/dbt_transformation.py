@@ -2,7 +2,6 @@ from datetime import datetime
 
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import dag
-
 from common.assets import RAW_AIS, RAW_PORTS_ACTIVITY
 
 DBT_BIN = "/opt/dbt-venv/bin/dbt"          # own virtualenv, see airflow/Dockerfile

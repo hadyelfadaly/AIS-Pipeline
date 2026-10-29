@@ -1,21 +1,16 @@
-import os
 import io
-import pandas as pd
 import json
-
-import requests
-from requests.exceptions import HTTPError
-
+import os
+from collections import Counter
 from datetime import timedelta
 
-from collections import Counter
-
-from common.preflight import preflight
-from common.portwatch_api import query
-
-from airflow.sdk import dag, task
+import pandas as pd
+import requests
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-
+from airflow.sdk import dag, task
+from common.portwatch_api import query
+from common.preflight import preflight
+from requests.exceptions import HTTPError
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 PORTS_URL = "https://hub.arcgis.com/api/v3/datasets/83b1bbc7b3354c5fb1f40673bb8f852e_0/downloads/data?format=csv&spatialRefId=4326&where=1%3D1"

@@ -1,7 +1,8 @@
 import pytest
 import requests
-from unittest.mock import MagicMock
+
 from dags.common.portwatch_api import query
+
 
 def test_query_success(mocker):
 

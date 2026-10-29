@@ -1,5 +1,7 @@
-import requests
 import time
+
+import requests
+
 
 def query(params, service_url, attempts=5):
     
@@ -30,9 +32,9 @@ def query(params, service_url, attempts=5):
             
             return body
 
-        except ValueError as exc:
-            raise exc
-        except Exception as exc:
+        except ValueError:
+            raise
+        except (requests.RequestException, RuntimeError) as exc:
 
             last = exc
             wait = 2 ** attempt
