@@ -106,7 +106,6 @@ FROM PORTS_REF;
 SELECT COUNT(DISTINCT a.portid) AS activity_ports_missing_in_ref
 FROM PORTS_ACTIVITY a
 LEFT JOIN PORTS_REF r ON a.portid = r.portid
-
 WHERE r.portid IS NULL;
 
 CREATE OR REPLACE EXTERNAL TABLE AIS_POSITIONS_EXT (user_id NUMBER(38, 0) AS (VALUE:"user_id"::NUMBER(38, 0)), name TEXT AS (VALUE:"name"::TEXT), latitude REAL AS (VALUE:"latitude"::REAL), longitude REAL AS (VALUE:"longitude"::REAL), sog REAL AS (VALUE:"sog"::REAL), cog REAL AS (VALUE:"cog"::REAL), navigational_status NUMBER(38, 0) AS (VALUE:"navigational_status"::NUMBER(38, 0)), event_time TIMESTAMP_NTZ AS (VALUE:"event_time"::TIMESTAMP_NTZ), cell_id TEXT AS (VALUE:"cell_id"::TEXT), hour TEXT AS (VALUE:"hour"::TEXT), wave_height_m REAL AS (VALUE:"wave_height_m"::REAL), current_velocity_kmh REAL AS (VALUE:"current_velocity_kmh"::REAL), wind_speed_kmh REAL AS (VALUE:"wind_speed_kmh"::REAL), polled_at REAL AS (VALUE:"polled_at"::REAL), year  NUMBER AS (TO_NUMBER(REGEXP_SUBSTR(metadata$filename, 'year=([0-9]+)',  1, 1, 'e', 1))), month NUMBER AS (TO_NUMBER(REGEXP_SUBSTR(metadata$filename, 'month=([0-9]+)', 1, 1, 'e', 1))), day   NUMBER AS (TO_NUMBER(REGEXP_SUBSTR(metadata$filename, 'day=([0-9]+)',   1, 1, 'e', 1)))) LOCATION = @S3_SILVER/positions/ FILE_FORMAT = (FORMAT_NAME = 'PARQUET_FF') TABLE_FORMAT = DELTA AUTO_REFRESH = FALSE REFRESH_ON_CREATE = FALSE;
@@ -128,4 +127,3 @@ CREATE OR REPLACE TRANSIENT TABLE AIS_POSITIONS_STG
 CREATE OR REPLACE TRANSIENT TABLE AIS_VESSELS_STG
   DATA_RETENTION_TIME_IN_DAYS = 0
   LIKE AIS_VESSELS;
-WHERE r.portid IS NULL;
