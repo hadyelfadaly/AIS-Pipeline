@@ -35,7 +35,7 @@ def silver(name):
     return s3(f"silver/{name}")
 
 
-def spark_session(app_name):
+def spark_session(app_name, extra_conf=None):
     builder = (
         SparkSession.builder
         .appName(app_name)
@@ -48,6 +48,9 @@ def spark_session(app_name):
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version", "2")
     )
+
+    for key, value in (extra_conf or {}).items():
+        builder = builder.config(key, value)
 
     if S3_ENDPOINT:
         builder = (
