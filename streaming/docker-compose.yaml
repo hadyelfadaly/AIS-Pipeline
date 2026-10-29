@@ -121,7 +121,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092 
 
     volumes:
-     - ./spark:/opt/spark-apps    
+      - ./spark:/opt/spark-apps   
 
     restart: unless-stopped
 
@@ -162,6 +162,8 @@ services:
       - /opt/spark/bin/spark-submit
       - --master
       - spark://spark-master:7077
+      - --total-executor-cores
+      - "2"
       - --py-files
       - /opt/spark/jars/delta-spark_2.12-3.3.2.jar
       - /opt/spark-apps/silver_stream.py
@@ -189,7 +191,63 @@ services:
 
     restart: unless-stopped
     stop_grace_period: 30s
+  
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: ais-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ais_hot_path.json
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}   # read by the datasource file
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  pg-sink:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: ais-pg-sink
+    hostname: pg-sink
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --total-executor-cores
+      - "1"
+      - --py-files
+      - /opt/spark/jars/delta-spark_2.12-3.3.2.jar
+      - /opt/spark-apps/stream_to_postgres.py
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: ${S3_BUCKET:-g9-ais-project}
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_password}
+    volumes:
+      - ./spark:/opt/spark-apps
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+      spark-worker:
+        condition: service_started
+    restart: unless-stopped
 
 volumes:
   kafka_data:
   postgres_data:
+  grafana_data:
