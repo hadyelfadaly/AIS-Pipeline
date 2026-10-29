@@ -45,6 +45,34 @@ services:
 
     restart: unless-stopped
 
+  ais-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producers
+    container_name: ais-producer
+    env_file: .env          # AISSTREAM_API_KEY, etc. — never baked into the image
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092 
+      AIS_MAX_MESSAGES: "0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  weather-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producers
+    container_name: weather-producer
+    env_file: .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    command: python -u producers/weather_producer.py
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
   postgres:
     image: postgres:17
     container_name: ais-postgres
@@ -69,7 +97,9 @@ services:
     restart: unless-stopped
 
   spark-master:
-    image: apache/spark:3.5.6
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     container_name: ais-spark-master
     hostname: spark-master
 
@@ -88,6 +118,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION: ${AWS_REGION}  
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092 
 
     volumes:
      - ./spark:/opt/spark-apps    
@@ -95,7 +126,9 @@ services:
     restart: unless-stopped
 
   spark-worker:
-    image: apache/spark:3.5.6
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     container_name: ais-spark-worker
     hostname: spark-worker
 
@@ -113,22 +146,47 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION: ${AWS_REGION}  
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     volumes:
      - ./spark:/opt/spark-apps          
 
     restart: unless-stopped
+  silver-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: ais-silver-stream
+    hostname: silver-stream
 
-  jupyter:
-    image: quay.io/jupyter/pyspark-notebook:x86_64-spark-3.5.1
-    container_name: ais-jupyter
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - /opt/spark-apps/silver_stream.py
+
     ports:
-      - "8888:8888"
+      - "4040:4040"          # SparkUI for the driver
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+      spark-worker:
+        condition: service_started
+
     environment:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION: ${AWS_REGION}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092     # explicit, not just relying on common.py default
+      S3_BUCKET: ${S3_BUCKET:-g9-ais-project}
+
     volumes:
-      - ./spark/notebooks:/home/jovyan/work
+      - ./spark:/opt/spark-apps
+
+    restart: unless-stopped
+    stop_grace_period: 30s
 
 volumes:
   kafka_data:
