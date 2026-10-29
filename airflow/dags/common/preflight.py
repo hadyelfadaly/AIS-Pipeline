@@ -9,6 +9,7 @@ from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 AWS_CONN_ID = "aws_default"
 SNOWFLAKE_CONN_ID = "snowflake_default"
 
+
 @task(retries=0)
 def check_env(required):
 
@@ -62,6 +63,7 @@ def check_source(service_url):
     if body.get("count", 0) <= 0:
         raise RuntimeError(f"Source returned no rows: {service_url}")
 
+
 @task(retries=0)
 def check_snowflake_identity():
 
@@ -80,7 +82,6 @@ def check_snowflake_identity():
 
     cursor.close()
     conn.close()
-
 
 @task_group(group_id="preflight")
 def preflight(required_env, source_urls):
