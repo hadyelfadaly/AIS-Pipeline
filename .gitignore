@@ -1,5 +1,6 @@
 docs/
 dashboard/
+*.mp4
 
 # ==========================================
 # Python & Virtual Environments
