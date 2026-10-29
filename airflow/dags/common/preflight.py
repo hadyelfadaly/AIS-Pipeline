@@ -4,8 +4,10 @@ import requests
 from airflow.sdk import task, task_group
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 AWS_CONN_ID = "aws_default"
+SNOWFLAKE_CONN_ID = "snowflake_default"
 
 @task(retries=0)
 def check_env(required):
@@ -60,6 +62,25 @@ def check_source(service_url):
     if body.get("count", 0) <= 0:
         raise RuntimeError(f"Source returned no rows: {service_url}")
 
+@task(retries=0)
+def check_snowflake_identity():
+
+    conn = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID).get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA()"
+    )
+    user, role, warehouse, database, schema = cursor.fetchone()
+
+    print(
+        f"Snowflake credentials OK, connected as {user} (Role: {role}, "
+        f"Warehouse: {warehouse}, DB: {database}, Schema: {schema})"
+    )
+
+    cursor.close()
+    conn.close()
+
 
 @task_group(group_id="preflight")
 def preflight(required_env, source_urls):
@@ -68,3 +89,4 @@ def preflight(required_env, source_urls):
     check_aws_identity()
     check_s3_roundtrip()
     check_source.expand(service_url=source_urls)
+    check_snowflake_identity()
