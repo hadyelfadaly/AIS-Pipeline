@@ -37,7 +37,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: 'airflow/python-version' # Uses our exact version
+          python-version-file: 'airflow/.python-version' # Uses our exact version
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
