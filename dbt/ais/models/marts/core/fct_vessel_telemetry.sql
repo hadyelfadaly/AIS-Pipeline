@@ -1,64 +1,101 @@
-{{ config(materialized='table') }}
+-- Cargo and tanker position reports with sea state and nearest port.
+--
+-- Nearest port without a full cross join: every ping and every port gets a
+-- 1-degree grid cell, and a ping is only compared with ports in its own cell
+-- and the 8 cells around it. A 25 km port zone always fits inside that window
+-- (except very close to the poles or the 180th meridian), so the answer is the
+-- same as the cross join at a tiny fraction of the cost.
 
-with telemetry as (
-    select * from {{ ref('stg_live_telemetry') }}
+with positions as (
+    select
+        *,
+        floor(latitude)  as lat_cell,
+        floor(longitude) as lon_cell
+    from {{ ref('int_cargo_positions') }}
 ),
 
 ports as (
-    select 
-        port_id, 
-        port_name, 
-        latitude as port_lat, 
-        longitude as port_lon 
+    select
+        port_id,
+        port_name,
+        latitude  as port_lat,
+        longitude as port_lon,
+        floor(latitude)  as lat_cell,
+        floor(longitude) as lon_cell
     from {{ ref('dim_ports') }}
+    where latitude is not null
+      and longitude is not null
 ),
 
--- Find the nearest port for each vessel ping using Snowflake's HAVERSINE distance
-vessel_with_nearest_port as (
+offsets as (
+    select column1 as d from values (-1), (0), (1)
+),
+
+-- each port is listed under its own cell and its 8 neighbours
+port_cells as (
     select
-        t.*,
-        p.port_id as nearest_port_id,
-        p.port_name as nearest_port_name,
-        haversine(t.latitude, t.longitude, p.port_lat, p.port_lon) as distance_to_port_km,
-        row_number() over (
-            partition by t.vessel_mmsi, t.event_time 
-            order by haversine(t.latitude, t.longitude, p.port_lat, p.port_lon) asc
-        ) as rank_port
-    from telemetry t
-    cross join ports p
+        p.port_id,
+        p.port_name,
+        p.port_lat,
+        p.port_lon,
+        p.lat_cell + dlat.d as lat_cell,
+        p.lon_cell + dlon.d as lon_cell
+    from ports p
+    cross join offsets dlat
+    cross join offsets dlon
+),
+
+nearest_port as (
+    select
+        pos.vessel_mmsi,
+        pos.event_time,
+        pc.port_id   as nearest_port_id,
+        pc.port_name as nearest_port_name,
+        haversine(pos.latitude, pos.longitude, pc.port_lat, pc.port_lon) as distance_to_port_km
+    from positions pos
+    inner join port_cells pc
+        on pos.lat_cell = pc.lat_cell
+       and pos.lon_cell = pc.lon_cell
+    qualify row_number() over (
+        partition by pos.vessel_mmsi, pos.event_time
+        order by distance_to_port_km
+    ) = 1
 )
 
 select
-    -- Primary Key
-    {{ dbt_utils.generate_surrogate_key(['vessel_mmsi', 'event_time']) }} as telemetry_id,
+    {{ dbt_utils.generate_surrogate_key(['p.vessel_mmsi', 'p.event_time']) }} as telemetry_id,
 
-    -- Foreign Keys
-    vessel_mmsi,
-    nearest_port_id,
-    event_date,
-    event_time,
+    -- keys
+    p.vessel_mmsi,
+    n.nearest_port_id,
+    p.event_date,
+    p.event_time,
 
-    -- Movement & Navigation
-    latitude,
-    longitude,
-    speed_knots,
-    course_degrees,
-    navigation_status_desc,
+    -- vessel
+    p.vessel_category,
 
-    -- Proximity to Port
-    nearest_port_name,
-    round(distance_to_port_km, 2) as distance_to_port_km,
-    case when distance_to_port_km <= 25.0 then true else false end as is_in_port_anchorage_zone,
+    -- movement
+    p.latitude,
+    p.longitude,
+    p.speed_knots,
+    p.course_degrees,
+    p.navigation_status_desc,
+    p.is_sailing,
 
-    -- Weather Impact
-    wave_height_m,
-    wind_speed_kmh,
-    current_velocity_kmh,
-    case 
-        when wave_height_m >= 3.0 or wind_speed_kmh >= 50.0 then 'Rough / Hazardous Sea'
-        when wave_height_m >= 1.5 or wind_speed_kmh >= 30.0 then 'Moderate Sea'
-        else 'Calm Sea'
-    end as sea_condition_category
+    -- proximity to port (null when no port within roughly 1 degree)
+    n.nearest_port_name,
+    round(n.distance_to_port_km, 2)                     as distance_to_port_km,
+    coalesce(n.distance_to_port_km <= 25, false)        as is_near_port,
 
-from vessel_with_nearest_port
-where rank_port = 1
+    -- weather
+    p.weather_cell_id,
+    p.wave_height_m,
+    p.wind_speed_kmh,
+    p.current_velocity_kmh,
+    p.has_weather,
+    p.sea_state
+
+from positions p
+left join nearest_port n
+    on p.vessel_mmsi = n.vessel_mmsi
+   and p.event_time = n.event_time

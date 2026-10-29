@@ -13,5 +13,11 @@ COPY requirements.txt .
 # 5. Install all Python dependencies into system Python
 RUN uv pip install --no-cache --system -r requirements.txt
 
-# 6. Drop privileges for runtime
+# 6. dbt (Fusion engine, v2) in its own virtualenv, kept apart from Airflow's
+#    Python packages. Fusion ships the Snowflake adapter built in.
+#    The DAG calls /opt/dbt-venv/bin/dbt directly.
+RUN uv venv /opt/dbt-venv && \
+    uv pip install --no-cache --python /opt/dbt-venv/bin/python "dbt==2.0.9"
+
+# 7. Drop privileges for runtime
 USER airflow

@@ -5,7 +5,7 @@ import math
 import os
 import time
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import requests
@@ -31,8 +31,16 @@ WEATHER_TOPIC = "weather_data"
 MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
 WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 
-GRID_SIZE = 0.1
-POLL_INTERVAL_SECONDS = int(os.getenv("WEATHER_POLL_INTERVAL_SECONDS", "3600"))
+# 1-degree cells: sea state barely changes over ~100 km, and worldwide AIS at 0.1
+# degrees means >10k cells, far beyond the Open-Meteo free quota. Must match
+# WEATHER_GRID_SIZE in spark/common.py.
+GRID_SIZE = float(os.getenv("WEATHER_GRID_SIZE", "1.0"))
+# Each call returns yesterday + today hourly, so a cell only needs a refresh
+# every few hours, not every hour.
+POLL_INTERVAL_SECONDS = int(os.getenv("WEATHER_POLL_INTERVAL_SECONDS", "21600"))
+# Fetch at most this many cells per loop so the Kafka consumer keeps polling.
+MAX_CELLS_PER_LOOP = int(os.getenv("WEATHER_MAX_CELLS_PER_LOOP", "20"))
+RATE_LIMIT_BACKOFF_SECONDS = 60
 REQUEST_TIMEOUT_SECONDS = 20
 ACTIVE_GRID_HOURS = 6
 
@@ -155,6 +163,7 @@ def fetch_and_join_weather(cell_id, cell_lat, cell_lon):
         "latitude": cell_lat,
         "longitude": cell_lon,
         "hourly": "wave_height,ocean_current_velocity",
+        "past_days": 1,
         "forecast_days": 2,
         "timezone": "UTC",
     }
@@ -163,6 +172,7 @@ def fetch_and_join_weather(cell_id, cell_lat, cell_lon):
         "latitude": cell_lat,
         "longitude": cell_lon,
         "hourly": "wind_speed_10m",
+        "past_days": 1,
         "forecast_days": 2,
         "timezone": "UTC",
     }
@@ -192,30 +202,22 @@ def fetch_and_join_weather(cell_id, cell_lat, cell_lon):
     # Find hours present in both API responses.
     common_hours = set(marine_times).intersection(weather_times)
 
-    # Do not use a future hour for the current update.
-    current_hour = datetime.now(timezone.utc).replace(
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
+    # Send hours up to the next scheduled refresh: positions arriving before
+    # this cell is fetched again then still find their (cell, hour). Forecast
+    # values are replaced by newer polls, since the Spark cache keeps the
+    # latest polled_at for each (cell, hour).
+    horizon = datetime.now(timezone.utc).replace(
+        minute=0, second=0, microsecond=0,
+    ) + timedelta(seconds=POLL_INTERVAL_SECONDS)
 
     eligible_hours = []
 
     for hour in common_hours:
         try:
-            if parse_utc_hour(hour) <= current_hour:
+            if parse_utc_hour(hour) <= horizon:
                 eligible_hours.append(hour)
         except (TypeError, ValueError):
-            logger.warning(
-                "Invalid API timestamp for grid %s: %s",
-                cell_id,
-                hour,
-            )
-
-    if not eligible_hours:
-        raise RuntimeError(
-            f"No common eligible hour returned by APIs for grid {cell_id}"
-        )
+            logger.warning("Invalid API timestamp for grid %s: %s", cell_id, hour)
 
     wave_values = marine_hourly.get("wave_height") or []
     current_values = marine_hourly.get("ocean_current_velocity") or []
@@ -291,7 +293,9 @@ def main():
     # cell_id -> grid coordinates and last observed time
     active_grids = {}
 
-    next_weather_update = 0
+    # cell_id -> last successful (or failed) fetch time
+    last_fetched = {}
+    paused_until = 0
 
     try:
         consumer, producer = create_kafka_clients()
@@ -352,20 +356,25 @@ def main():
 
             for cell_id in expired_grids:
                 del active_grids[cell_id]
+                last_fetched.pop(cell_id, None)
                 logger.info(
                     "Removed inactive grid: %s",
                     cell_id,
                 )
 
-            # Run the first update as soon as a grid is available,
-            # then repeat at the configured polling interval.
-            if active_grids and now >= next_weather_update:
-                logger.info(
-                    "Starting weather update for %d active grid(s)",
-                    len(active_grids),
-                )
+            # Fetch new cells right away and refresh old ones every
+            # POLL_INTERVAL_SECONDS, a few cells per loop.
+            due = [
+                cell_id
+                for cell_id in active_grids
+                if now - last_fetched.get(cell_id, 0) >= POLL_INTERVAL_SECONDS
+            ]
 
-                for cell_id, grid in list(active_grids.items()):
+            if due and now >= paused_until:
+                sent_cells = 0
+
+                for cell_id in due[:MAX_CELLS_PER_LOOP]:
+                    grid = active_grids[cell_id]
                     try:
                         weather_records = fetch_and_join_weather(
                             cell_id=cell_id,
@@ -380,11 +389,20 @@ def main():
                                 value=weather_record,
                             )
 
-                        logger.info(
-                            "Sent %d weather hour(s) for cell=%s",
-                            len(weather_records),
-                            cell_id,
-                        )
+                        last_fetched[cell_id] = time.time()
+                        sent_cells += 1
+
+                    except requests.HTTPError as error:
+                        status = getattr(error.response, "status_code", None)
+                        if status == 429:
+                            logger.warning(
+                                "Open-Meteo rate limit hit, pausing %d s",
+                                RATE_LIMIT_BACKOFF_SECONDS,
+                            )
+                            paused_until = time.time() + RATE_LIMIT_BACKOFF_SECONDS
+                            break
+                        logger.error("HTTP error for grid %s: %s", cell_id, error)
+                        last_fetched[cell_id] = time.time()
 
                     except (
                         requests.RequestException,
@@ -398,24 +416,24 @@ def main():
                             cell_id,
                             error,
                         )
+                        # retry this cell on the next refresh, not every loop
+                        last_fetched[cell_id] = time.time()
 
                     except Exception:
                         logger.exception(
                             "Unexpected error for grid %s",
                             cell_id,
                         )
+                        last_fetched[cell_id] = time.time()
 
-                # Flush ensures queued Kafka records are delivered.
-                producer.flush()
-
-                next_weather_update = (
-                    time.time() + POLL_INTERVAL_SECONDS
-                )
-
-                logger.info(
-                    "Weather update completed. Next update in %d seconds.",
-                    POLL_INTERVAL_SECONDS,
-                )
+                if sent_cells:
+                    producer.flush()
+                    logger.info(
+                        "Sent weather for %d cell(s); %d still due, %d active",
+                        sent_cells,
+                        max(len(due) - sent_cells, 0),
+                        len(active_grids),
+                    )
 
     except KeyboardInterrupt:
         logger.info("Stopping Weather Producer...")

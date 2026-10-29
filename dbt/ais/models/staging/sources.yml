@@ -4,10 +4,10 @@ sources:
   - name: raw
     database: AIS
     schema: RAW
-    description: "Raw silver-tier data loaded from S3 into Snowflake"
+    description: "Silver-layer data copied from S3 into Snowflake by the LOAD_PORTS_ACTIVITY and LOAD_AIS_DATA procedures"
     tables:
       - name: ports_activity
-        description: "Daily port traffic metrics, vessel calls, import/export cargo volumes"
+        description: "IMF PortWatch daily port activity: port calls and import/export volumes per port per day"
         columns:
           - name: portid
             tests:
@@ -17,22 +17,38 @@ sources:
               - not_null
 
       - name: ports_ref
-        description: "Port master reference, geographic coordinates, country, and UN/LOCODE"
+        description: "IMF PortWatch port reference: coordinates, country, UN/LOCODE"
         columns:
           - name: portid
             tests:
               - unique
               - not_null
-              
-      - name: live_telemetry
-        description: "Enriched AIS vessel tracking pings joined with weather"
+
+      - name: ais_positions
+        description: "AIS position reports (silver/positions), enriched in Spark with Open-Meteo weather on a (weather cell, hour) key"
+        config:
+          loaded_at_field: event_time
+          freshness:
+            warn_after: {count: 7, period: day}
+            error_after: {count: 8, period: day}
         columns:
           - name: user_id
-            description: "Vessel MMSI identifier"
+            description: "Vessel MMSI"
             tests:
               - not_null
           - name: event_time
-            description: "UTC timestamp of position report"
+            description: "UTC time of the position report"
             tests:
               - not_null
 
+      - name: ais_vessels
+        description: "AIS ship static data (silver/vessels), one row per static message received: type, destination, ETA, draught"
+        columns:
+          - name: user_id
+            description: "Vessel MMSI"
+            tests:
+              - not_null
+          - name: seen_at
+            description: "When Spark processed the static message"
+            tests:
+              - not_null

@@ -6,7 +6,6 @@ from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
-
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
@@ -15,8 +14,8 @@ from airflow.sdk import dag, task
 from common.preflight import preflight
 from common.verify import verify_outputs
 from common.portwatch_api import query
-
 from common.dq import run_checks, PORTS_CHECKS, AIS_CHECKS
+from common.assets import RAW_AIS, RAW_PORTS_ACTIVITY
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 AWS_CONN_ID = "aws_default"
@@ -99,7 +98,7 @@ def read_watermark(hook, state_key, snapshot_prefix, snapshot_marker_key):
     start_date=datetime(2026, 10, 1),
     catchup=False,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
-    tags=["activity", "ports", "chokepoints"]
+    tags=["activity", "ports", "chokepoints", "ais"]
 )
 def activity_weekly_dag():
 
@@ -187,11 +186,11 @@ def activity_weekly_dag():
 
         print(f"wrote {len(written)} file(s): {written}; watermark is now {new_watermark}", flush=True)
 
-    @task(retries=0)          #a fail check is deterministic, so retrying is pointless
+    @task(retries=0, outlets=[RAW_PORTS_ACTIVITY])
     def dq_ports():
-        run_checks(PORTS_CHECKS)
+       run_checks(PORTS_CHECKS)
 
-    @task(retries=0)
+    @task(retries=0, outlets=[RAW_AIS])
     def dq_ais():
         run_checks(AIS_CHECKS)
 

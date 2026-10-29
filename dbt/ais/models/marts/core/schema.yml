@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: dim_vessels
+    description: "One row per vessel with its most recent AIS static data."
+    columns:
+      - name: vessel_mmsi
+        tests: [unique, not_null]
+      - name: vessel_category
+        description: "Cargo, Tanker, Passenger, ... derived from the AIS ship type"
+
+  - name: dim_ports
+    description: "One row per PortWatch port with location and trade profile."
+    columns:
+      - name: port_id
+        tests: [unique, not_null]
+
+  - name: fct_port_activity_daily
+    description: "PortWatch daily port calls and trade volumes per port."
+    columns:
+      - name: activity_id
+        tests: [unique, not_null]
+      - name: port_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_ports')
+                field: port_id
+
+  - name: fct_vessel_telemetry
+    description: "Cargo and tanker position reports with sea state and nearest port within roughly 1 degree. Basis for maps and the live-vs-history views in Power BI."
+    columns:
+      - name: telemetry_id
+        tests: [unique, not_null]
+      - name: vessel_mmsi
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_vessels')
+                field: vessel_mmsi
+      - name: nearest_port_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_ports')
+                field: port_id
+      - name: is_near_port
+        description: "True when the vessel is within 25 km of the nearest port"
+      - name: sea_state
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Calm', 'Moderate', 'Rough', 'Unknown']
+
+  - name: fct_vessel_eta_risk
+    description: >
+      Answers "which ships are at risk of arriving late, and why?". One row per cargo/tanker
+      vessel with a valid declared ETA: destination port matched by UN/LOCODE or unique port name,
+      straight-line distance left, projected arrival at the ship's sailing speed, and the ETA status,
+      with sea state at the ship and congestion at the destination port as candidate causes.
+      Distances are great-circle, so delays are conservative.
+    columns:
+      - name: vessel_mmsi
+        tests: [unique, not_null]
+      - name: destination_port_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_ports')
+                field: port_id
+      - name: eta_status
+        description: "At risk = projected more than 6 h after the declared ETA"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Unknown destination', 'At destination', 'ETA passed', 'Stationary', 'At risk', 'On track']
+      - name: projected_delay_hours
+        description: "Hours the projected arrival falls after the declared ETA (negative = early)"
+
+  - name: mart_weather_speed_impact
+    description: "Average sailing speed of cargo/tankers per sea state, absolute and relative to each ship's own calm-water speed."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [vessel_category, sea_state]
+    columns:
+      - name: pct_speed_vs_own_calm
+        description: "Percent difference from each ship's own median calm-water speed (only ships with >= 5 calm sailing pings)"
