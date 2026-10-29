@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.sdk import dag, task
@@ -13,9 +14,11 @@ from airflow.sdk import dag, task
 from common.preflight import preflight
 from common.verify import verify_outputs
 from common.portwatch_api import query
+from common.dq import run_checks, PORTS_CHECKS, AIS_CHECKS
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 AWS_CONN_ID = "aws_default"
+SNOWFLAKE_CONN_ID = "snowflake_default"
 PORTS_SERVICE_URL = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0"
 CHOKEPOINTS_SERVICE_URL = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0"
 PORTS_BASE = "bronze/ports_activity"
@@ -182,6 +185,14 @@ def activity_weekly_dag():
 
         print(f"wrote {len(written)} file(s): {written}; watermark is now {new_watermark}", flush=True)
 
+    @task(retries=0)          #a fail check is deterministic, so retrying is pointless
+    def dq_ports():
+        run_checks(PORTS_CHECKS)
+
+    @task(retries=0)
+    def dq_ais():
+        run_checks(AIS_CHECKS)
+
     silver_ports_activity = GlueJobOperator(
         task_id="silver_ports_activity",
         job_name="ports_silver_weekly",
@@ -191,11 +202,42 @@ def activity_weekly_dag():
         verbose=False,
         retries=1,
     )
+    load_ports = SQLExecuteQueryOperator(
+        task_id="load_ports_activity",
+        conn_id=SNOWFLAKE_CONN_ID,          
+        sql="CALL LOAD_PORTS_ACTIVITY(14)",
+        autocommit=True,
+    )
+    load_ais = SQLExecuteQueryOperator(
+        task_id="load_ais_data",
+        conn_id=SNOWFLAKE_CONN_ID,
+        sql="CALL LOAD_AIS_DATA(14)",
+        autocommit=True,
+    )
+    delta_maintenance = GlueJobOperator(
+        task_id="delta_maintenance",
+        job_name="ais_delta_maintenance",
+        script_args={
+            "--base_path": "s3://g9-ais-project/silver",
+            "--tables": "positions,vessels",
+            "--retention_hours": "168",
+        },
+        region_name="eu-north-1",
+        wait_for_completion=True,
+        verbose=False,
+        retries=1,
+    )
     gate = preflight(["BUCKET_NAME", "AIRFLOW_CONN_AWS_DEFAULT"], [PORTS_SERVICE_URL, CHOKEPOINTS_SERVICE_URL])
     pull = [pull_activity.override(task_id="pull_ports_activity")( service_url=PORTS_SERVICE_URL, state_key=PORTS_STATE_KEY, snapshot_prefix=PORTS_SNAPSHOT_PREFIX, snapshot_marker_key=PORTS_SNAPSHOT_MARKER_KEY),
             pull_activity.override(task_id="pull_chokepoints_activity")(service_url=CHOKEPOINTS_SERVICE_URL, state_key=CHOKEPOINTS_STATE_KEY, snapshot_prefix=CHOKEPOINTS_SNAPSHOT_PREFIX, snapshot_marker_key=CHOKEPOINTS_SNAPSHOT_MARKER_KEY)]
+    dqAis = dq_ais()
+    dqPorts = dq_ports()
+
 
     gate >> pull >> verify_outputs([PORTS_STATE_KEY, CHOKEPOINTS_STATE_KEY]) >> silver_ports_activity
+    silver_ports_activity >> load_ports >> dqPorts
+    silver_ports_activity >> load_ais >> dqAis 
+    [dqPorts, dqAis] >> delta_maintenance
 
 
 activity_weekly_dag()
