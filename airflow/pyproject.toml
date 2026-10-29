@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "apache-airflow-providers-amazon>=9.39.0",
+    "apache-airflow-providers-snowflake>=6.20.0",
     "cryptography>=50.0.2",
     "pandas>=3.1.0",
     "pyarrow>=26.0.0",
