@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
+
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
@@ -14,6 +15,7 @@ from airflow.sdk import dag, task
 from common.preflight import preflight
 from common.verify import verify_outputs
 from common.portwatch_api import query
+
 from common.dq import run_checks, PORTS_CHECKS, AIS_CHECKS
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
@@ -202,6 +204,7 @@ def activity_weekly_dag():
         verbose=False,
         retries=1,
     )
+
     load_ports = SQLExecuteQueryOperator(
         task_id="load_ports_activity",
         conn_id=SNOWFLAKE_CONN_ID,          
