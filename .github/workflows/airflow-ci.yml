@@ -1,0 +1,55 @@
+name: Airflow CI Pipeline
+
+on:
+  push:
+    branches: [ main, development ]
+    paths:
+      - 'dags/**'
+      - 'plugins/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/airflow-ci.yml' #Also trigger if this workflow file changes
+  pull_request:
+    branches: [ main, development ]
+    paths:
+      - 'dags/**'
+      - 'plugins/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
+      - '.github/workflows/airflow-ci.yml' #Also trigger if this workflow file changes
+
+jobs:
+  test-airflow:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./airflow
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'airflow/python-version' # Uses our exact version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true # Caches uv's downloads to speed up future runs
+          cache-dependency-glob: "airflow/uv.lock" # Tells the cache when to invalidate
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Run Unit Tests
+        run: uv run --group test pytest tests/ -v
