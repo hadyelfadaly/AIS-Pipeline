@@ -1,0 +1,5 @@
+pytest>=8.3,<9
+kafka-python
+requests
+websockets
+python-dotenv
