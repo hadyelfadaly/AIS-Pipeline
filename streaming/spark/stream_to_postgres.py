@@ -4,7 +4,6 @@ import psycopg2
 from psycopg2.extras import execute_values
 from pyspark.sql import Window
 from pyspark.sql import functions as F
-from pyspark.sql.functions import to_utc_timestamp
 
 from common import silver, spark_session
 
@@ -15,9 +14,7 @@ PG_USER = os.getenv("POSTGRES_USER", "ais_user")
 PG_PASS = os.getenv("POSTGRES_PASSWORD", "change_this_local_password")
 
 JDBC_URL = f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"
-CHECKPOINT_DIR = os.getenv("PG_CHECKPOINT_DIR", "data/checkpoints")
-# The Delta tables store wall-clock time in this zone; Postgres must hold UTC.
-SOURCE_TZ = os.getenv("SOURCE_TZ", "Africa/Cairo")
+CHECKPOINT_DIR = os.getenv("PG_CHECKPOINT_DIR", silver("_cp"))
 
 DELTA_CONF = {
     "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
@@ -107,8 +104,7 @@ def latest_per_vessel(frame, order_col):
 def positions_batch(batch_df, batch_id):
     if batch_df.isEmpty():
         return
-
-    batch_df = batch_df.withColumn("event_time", to_utc_timestamp("event_time", SOURCE_TZ))
+    
     history = align(batch_df, POSITION_COLUMNS).select(*POSITION_COLUMNS)
     (history.write
      .format("jdbc")
@@ -135,7 +131,6 @@ def vessels_batch(batch_df, batch_id):
     if batch_df.isEmpty():
         return
 
-    batch_df = batch_df.withColumn("seen_at", to_utc_timestamp("seen_at", SOURCE_TZ))
     latest = align(latest_per_vessel(batch_df, "seen_at"), VESSEL_COLUMNS)
     rows = [tuple(r) for r in latest.select(*VESSEL_COLUMNS).collect()]
     upserted = upsert(VESSEL_UPSERT, rows)
