@@ -2,7 +2,6 @@ import os
 
 from pyspark.sql import Window
 from pyspark.sql import functions as F
-from pyspark.sql.functions import to_utc_timestamp
 
 from common import silver, spark_session
 
@@ -11,8 +10,6 @@ PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 PG_DB = os.getenv("POSTGRES_DB", "vessel_tracking")
 PG_USER = os.getenv("POSTGRES_USER", "ais_user")
 PG_PASS = os.getenv("POSTGRES_PASSWORD", "change_this_local_password")
-
-SOURCE_TZ = os.getenv("SOURCE_TZ", "Africa/Cairo")
 
 JDBC_URL = f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"
 
@@ -62,11 +59,8 @@ def main():
 
     positions = align(spark.read.format("delta").load(silver("positions")),
                       POSITION_COLUMNS)
-    positions = positions.withColumn("event_time",
-                                     to_utc_timestamp("event_time", SOURCE_TZ))
 
     vessels = spark.read.format("delta").load(silver("vessels"))
-    vessels = vessels.withColumn("seen_at", to_utc_timestamp("seen_at", SOURCE_TZ))
     latest = Window.partitionBy("user_id").orderBy(F.col("seen_at").desc())
     vessels = align(
         vessels

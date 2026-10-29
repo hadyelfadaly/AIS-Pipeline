@@ -48,7 +48,13 @@ def dbt_transform_dag():
         retries=0,
     )
 
-    deps >> freshness >> build_staging >> build_marts
+    docs = BashOperator(
+        task_id="dbt_docs_generate",
+        bash_command=f"cd {DBT_PROJECT_DIR} && {DBT_BIN} docs generate {DBT_FLAGS}",
+        retries=1,    # unlike a test, this can fail on a transient connection blip
+    )
+
+    deps >> freshness >> build_staging >> build_marts >> docs
 
 
 dbt_transform_dag()
