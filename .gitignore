@@ -1,5 +1,5 @@
-*.pdf
-The_Data_Sources.md
+docs/
+dashboard/
 
 # ==========================================
 # Python & Virtual Environments
