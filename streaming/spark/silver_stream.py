@@ -1,5 +1,6 @@
 import threading
 
+from delta.tables import DeltaTable
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     DoubleType,
@@ -224,13 +225,26 @@ def position_batch(batch_df, batch_id):
                      "wind_speed_kmh", "polled_at"):
             positions = positions.withColumn(name, F.lit(None).cast("double"))
 
-    (positions
-     .withColumn("year", F.year("event_time"))
-     .withColumn("month", F.month("event_time"))
-     .withColumn("day", F.dayofmonth("event_time"))
-     .write.mode("append")
-     .partitionBy("year", "month", "day")
-     .parquet(silver("positions")))
+    out = (positions
+           .withColumn("year", F.year("event_time"))
+           .withColumn("month", F.month("event_time"))
+           .withColumn("day", F.dayofmonth("event_time"))
+           .dropDuplicates(["user_id", "event_time"]))     # duplicates inside this batch
+
+    path = silver("positions")
+    spark = batch_df.sparkSession
+
+    if DeltaTable.isDeltaTable(spark, path):
+        min_ts = out.agg(F.min("event_time")).first()[0]
+        (DeltaTable.forPath(spark, path).alias("t")
+            .merge(out.alias("s"),
+                   "t.user_id = s.user_id AND t.event_time = s.event_time "
+                   "AND t.year = s.year AND t.month = s.month AND t.day = s.day "
+                   f"AND t.event_time >= timestamp'{min_ts}' - interval 10 minutes")
+            .whenNotMatchedInsertAll()
+            .execute())
+    else:
+        out.write.format("delta").mode("append").partitionBy("year", "month", "day").save(path)
 
     print(f"[silver] positions batch {batch_id}", flush=True)
 
@@ -246,9 +260,11 @@ def static_batch(batch_df, batch_id):
      .withColumn("year", F.year("seen_at"))
      .withColumn("month", F.month("seen_at"))
      .withColumn("day", F.dayofmonth("seen_at"))
-     .write.mode("append")
+     .write
+     .format("delta")
+     .mode("append")
      .partitionBy("year", "month", "day")
-     .parquet(silver("vessels")))
+     .save(silver("vessels")))
 
     print(f"[silver] vessels batch {batch_id}", flush=True)
 

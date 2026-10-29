@@ -17,8 +17,8 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from common import bronze, silver, spark_session
-from silver_stream import clean_positions, clean_static, clean_weather
+from streaming.spark.common import bronze, silver, spark_session
+from streaming.spark.silver_stream import clean_positions, clean_static, clean_weather
 
 RAW_SCHEMA = StructType([
     StructField("raw_json", StringType()),

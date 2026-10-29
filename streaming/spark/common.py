@@ -1,16 +1,12 @@
 import os
 from pathlib import Path
-
-from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(PROJECT_ROOT / ".env", override=True)
-
 BUCKET = os.getenv("S3_BUCKET", "g9-ais-project")
 REGION = os.getenv("AWS_REGION", "eu-north-1")
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "")
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 
 TOPIC_POSITION = "position_report"
 TOPIC_STATIC = "ship_static_data"
@@ -46,7 +42,11 @@ def spark_session(app_name):
         .config("spark.sql.shuffle.partitions", "8")
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version", "2")
+        .config("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version", "2")       
+        .config("spark.databricks.delta.optimizeWrite.enabled", "true")
+        .config("spark.databricks.delta.autoCompact.enabled", "true")
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
     )
 
     if S3_ENDPOINT:
