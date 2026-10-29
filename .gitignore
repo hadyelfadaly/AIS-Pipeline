@@ -67,7 +67,6 @@ keys/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-<<<<<<< HEAD
 Thumbs.db
 
 # Logs
@@ -84,6 +83,3 @@ Thumbs.db
 AIS/
 # local spark scratch output
 data/
-=======
-Thumbs.db
->>>>>>> b96dc66de59fe07858ce9e9dace111023c383576
