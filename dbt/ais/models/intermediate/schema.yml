@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: int_cargo_positions
+    description: "Position reports of cargo and tanker vessels only (AIS types 70-89), with an is_sailing flag (under way and >= 3 knots)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [vessel_mmsi, event_time]
+    columns:
+      - name: vessel_mmsi
+        tests:
+          - not_null
+
+
+  - name: int_port_congestion
+    description: "Per port: average daily port calls over its latest 7 days vs the 90 days before, as a proxy for congestion."
+    columns:
+      - name: port_id
+        tests: [unique, not_null]
+      - name: congestion_level
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['High', 'Normal', 'Low', 'Unknown']
