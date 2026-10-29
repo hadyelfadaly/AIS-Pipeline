@@ -1,0 +1,33 @@
+FROM apache/spark:3.5.6
+
+USER root
+
+RUN mkdir -p /opt/spark-extra-jars && \
+    curl -fSL -o /opt/spark-extra-jars/spark-sql-kafka-0-10_2.12-3.5.6.jar \
+      https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.6/spark-sql-kafka-0-10_2.12-3.5.6.jar && \
+    curl -fSL -o /opt/spark-extra-jars/kafka-clients-3.4.1.jar \
+      https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar && \
+    curl -fSL -o /opt/spark-extra-jars/spark-token-provider-kafka-0-10_2.12-3.5.6.jar \
+      https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.6/spark-token-provider-kafka-0-10_2.12-3.5.6.jar && \
+    curl -fSL -o /opt/spark-extra-jars/commons-pool2-2.11.1.jar \
+      https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar && \
+    curl -fSL -o /opt/spark-extra-jars/hadoop-aws-3.3.4.jar \
+      https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
+    curl -fSL -o /opt/spark-extra-jars/aws-java-sdk-bundle-1.12.262.jar \
+      https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar && \
+    cp /opt/spark-extra-jars/*.jar /opt/spark/jars/ && \
+    chown spark:spark /opt/spark-extra-jars/*.jar /opt/spark/jars/*.jar
+
+RUN curl -fSL -o /opt/spark-extra-jars/delta-spark_2.12-3.3.2.jar \
+  https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.3.2/delta-spark_2.12-3.3.2.jar && \
+curl -fSL -o /opt/spark-extra-jars/delta-storage-3.3.2.jar \
+  https://repo1.maven.org/maven2/io/delta/delta-storage/3.3.2/delta-storage-3.3.2.jar && \
+cp /opt/spark-extra-jars/delta-spark_2.12-3.3.2.jar /opt/spark/jars/ && \
+cp /opt/spark-extra-jars/delta-storage-3.3.2.jar /opt/spark/jars/ && \
+chown spark:spark /opt/spark/jars/delta-*.jar
+
+RUN curl -fSL -o /opt/spark/jars/postgresql-42.7.4.jar \
+      https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar && \
+    pip install --no-cache-dir psycopg2-binary
+
+USER spark

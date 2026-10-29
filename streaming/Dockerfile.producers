@@ -1,0 +1,16 @@
+FROM python:3.14-slim
+
+USER root
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN uv pip install --no-cache --system -r requirements.txt
+
+COPY producers/ ./producers/
+
+# .env is NOT copied in — secrets come from compose env_file at runtime
+
+CMD ["python", "-u", "producers/ais_producer.py"]
