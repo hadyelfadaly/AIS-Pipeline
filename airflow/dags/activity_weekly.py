@@ -2,20 +2,18 @@ import io
 import json
 import os
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
-
-from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
-from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import dag, task
-
+from common.assets import RAW_AIS, RAW_PORTS_ACTIVITY
+from common.dq import AIS_CHECKS, PORTS_CHECKS, run_checks
+from common.portwatch_api import query
 from common.preflight import preflight
 from common.verify import verify_outputs
-from common.portwatch_api import query
-from common.dq import run_checks, PORTS_CHECKS, AIS_CHECKS
-from common.assets import RAW_AIS, RAW_PORTS_ACTIVITY
 
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 AWS_CONN_ID = "aws_default"
@@ -151,7 +149,7 @@ def activity_weekly_dag():
         df = df.drop(columns=[c for c in df.columns if c.lower() in DROP_COLUMNS])
         max_date = pd.to_datetime(df[["year", "month", "day"]].astype(int)).max().date()
         df = df.astype("string")
-        ingest_date = datetime.now(timezone.utc).date().isoformat()
+        ingest_date = datetime.now(UTC).date().isoformat()
         written = []
 
         for year, part in df.groupby("year", sort=False):
@@ -176,7 +174,7 @@ def activity_weekly_dag():
                 "watermark": new_watermark.isoformat(),
                 "rows_last_run": len(rows),
                 "last_files": written,
-                "last_run_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "last_run_utc": datetime.now(UTC).isoformat(timespec="seconds"),
                 "overlap_days": OVERLAP_DAYS,
             }),
             key=state_key,

@@ -1,10 +1,10 @@
 import os
-import requests
 
-from airflow.sdk import task, task_group
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+import requests
 from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from airflow.sdk import task, task_group
 
 AWS_CONN_ID = "aws_default"
 SNOWFLAKE_CONN_ID = "snowflake_default"
